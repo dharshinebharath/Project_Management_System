@@ -32,3 +32,20 @@ export async function api(path, { token, ...options } = {}) {
 export function jsonBody(value) {
   return JSON.stringify(value)
 }
+
+export async function downloadFile(path, token, fileName) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const response = await fetch(`${API_URL}${path}`, { headers })
+  if (!response.ok) {
+    const message = (await response.text()) || `Request failed (${response.status})`
+    throw new Error(message)
+  }
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
