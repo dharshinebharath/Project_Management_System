@@ -82,6 +82,12 @@ namespace backend.Api.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("TaskId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TeamId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("UploadedAt")
                         .HasColumnType("datetime2");
 
@@ -91,6 +97,10 @@ namespace backend.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ProjectId");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("TeamId");
 
                     b.HasIndex("UploadedById");
 
@@ -118,11 +128,16 @@ namespace backend.Api.Migrations
                     b.Property<int>("ProjectId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("TeamId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PerformedById");
 
                     b.HasIndex("ProjectId");
+
+                    b.HasIndex("TeamId");
 
                     b.ToTable("History");
                 });
@@ -161,8 +176,14 @@ namespace backend.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("AssignedById")
+                        .HasColumnType("int");
+
                     b.Property<int?>("AssignedToId")
                         .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("DueDate")
                         .HasColumnType("datetime2");
@@ -181,7 +202,13 @@ namespace backend.Api.Migrations
                     b.Property<int?>("ReviewedById")
                         .HasColumnType("int");
 
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date");
+
                     b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TeamId")
                         .HasColumnType("int");
 
                     b.Property<string>("Title")
@@ -190,11 +217,15 @@ namespace backend.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AssignedById");
+
                     b.HasIndex("AssignedToId");
 
                     b.HasIndex("ProjectId");
 
                     b.HasIndex("ReviewedById");
+
+                    b.HasIndex("TeamId");
 
                     b.ToTable("ProjectTasks");
                 });
@@ -227,6 +258,51 @@ namespace backend.Api.Migrations
                     b.HasIndex("TaskId");
 
                     b.ToTable("TaskComments");
+                });
+
+            modelBuilder.Entity("backend.Api.Models.Team", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TeamLeadId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("TeamLeadId");
+
+                    b.ToTable("Teams");
+                });
+
+            modelBuilder.Entity("backend.Api.Models.TeamMember", b =>
+                {
+                    b.Property<int>("TeamId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TeamId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("TeamMembers");
                 });
 
             modelBuilder.Entity("backend.Api.Models.TeamRequest", b =>
@@ -328,6 +404,16 @@ namespace backend.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("backend.Api.Models.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("backend.Api.Models.Team", "Team")
+                        .WithMany("Resources")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("backend.Api.Models.User", "UploadedBy")
                         .WithMany()
                         .HasForeignKey("UploadedById")
@@ -335,6 +421,10 @@ namespace backend.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+
+                    b.Navigation("Task");
+
+                    b.Navigation("Team");
 
                     b.Navigation("UploadedBy");
                 });
@@ -353,9 +443,16 @@ namespace backend.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("backend.Api.Models.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("PerformedBy");
 
                     b.Navigation("Project");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("backend.Api.Models.ProjectMember", b =>
@@ -379,6 +476,11 @@ namespace backend.Api.Migrations
 
             modelBuilder.Entity("backend.Api.Models.ProjectTask", b =>
                 {
+                    b.HasOne("backend.Api.Models.User", "AssignedBy")
+                        .WithMany()
+                        .HasForeignKey("AssignedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("backend.Api.Models.User", "AssignedTo")
                         .WithMany()
                         .HasForeignKey("AssignedToId")
@@ -395,11 +497,20 @@ namespace backend.Api.Migrations
                         .HasForeignKey("ReviewedById")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("backend.Api.Models.Team", "Team")
+                        .WithMany("Tasks")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AssignedBy");
+
                     b.Navigation("AssignedTo");
 
                     b.Navigation("Project");
 
                     b.Navigation("ReviewedBy");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("backend.Api.Models.TaskComment", b =>
@@ -419,6 +530,44 @@ namespace backend.Api.Migrations
                     b.Navigation("Author");
 
                     b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("backend.Api.Models.Team", b =>
+                {
+                    b.HasOne("backend.Api.Models.Project", "Project")
+                        .WithMany("Teams")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("backend.Api.Models.User", "TeamLead")
+                        .WithMany()
+                        .HasForeignKey("TeamLeadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+
+                    b.Navigation("TeamLead");
+                });
+
+            modelBuilder.Entity("backend.Api.Models.TeamMember", b =>
+                {
+                    b.HasOne("backend.Api.Models.Team", "Team")
+                        .WithMany("Members")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("backend.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Team");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("backend.Api.Models.TeamRequest", b =>
@@ -453,11 +602,22 @@ namespace backend.Api.Migrations
                     b.Navigation("Members");
 
                     b.Navigation("Tasks");
+
+                    b.Navigation("Teams");
                 });
 
             modelBuilder.Entity("backend.Api.Models.ProjectTask", b =>
                 {
                     b.Navigation("Comments");
+                });
+
+            modelBuilder.Entity("backend.Api.Models.Team", b =>
+                {
+                    b.Navigation("Members");
+
+                    b.Navigation("Resources");
+
+                    b.Navigation("Tasks");
                 });
 #pragma warning restore 612, 618
         }

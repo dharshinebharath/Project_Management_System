@@ -5,13 +5,17 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) && builder.Environment.IsDevelopment())
+    jwtKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
 if (string.IsNullOrWhiteSpace(jwtKey) || Encoding.UTF8.GetByteCount(jwtKey) < 32)
     throw new InvalidOperationException("Configure Jwt:Key with a secret of at least 32 bytes.");
+builder.Configuration["Jwt:Key"] = jwtKey;
 
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddControllers();
@@ -36,6 +40,28 @@ builder.Services
             ValidateLifetime = true,
             RoleClaimType = ClaimTypes.Role,
             NameClaimType = ClaimTypes.Name
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var principal = context.Principal;
+                var userIdValue = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                var role = principal?.FindFirstValue(ClaimTypes.Role);
+                if (!int.TryParse(userIdValue, out var userId) || string.IsNullOrEmpty(role))
+                {
+                    context.Fail("Invalid account claims.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+                var accountRole = await db.Users.AsNoTracking()
+                    .Where(user => user.Id == userId && user.IsActive)
+                    .Select(user => user.Role.ToString())
+                    .FirstOrDefaultAsync(context.HttpContext.RequestAborted);
+                if (accountRole is null || accountRole != role)
+                    context.Fail("Account is inactive or its role has changed.");
+            }
         };
     });
 builder.Services.AddAuthorization();
@@ -65,7 +91,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 
         db.Users.Add(new User
         {
-            FullName = "Workspace Administrator",
+            FullName = "Admin",
             Email = adminEmail,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
             Role = UserRole.Admin,

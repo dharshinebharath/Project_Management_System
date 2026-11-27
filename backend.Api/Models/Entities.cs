@@ -1,6 +1,6 @@
 namespace backend.Api.Models;
 
-public enum UserRole { Admin = 1, Manager = 2, Employee = 3 }
+public enum UserRole { Admin = 1, Manager = 2, Employee = 3, TeamLead = 4 }
 public enum ProjectStatus { Active = 1, Completed = 2, OnHold = 3 }
 public enum RequestStatus { Pending = 1, Approved = 2, Rejected = 3 }
 // Keep Completed at 3 so existing SQL rows marked Done remain completed.
@@ -30,6 +30,7 @@ public class Project
     public int ManagerId { get; set; }
     public User Manager { get; set; } = null!;
     public ICollection<ProjectMember> Members { get; set; } = new List<ProjectMember>();
+    public ICollection<Team> Teams { get; set; } = new List<Team>();
     public ICollection<ProjectTask> Tasks { get; set; } = new List<ProjectTask>();
 }
 
@@ -43,15 +44,43 @@ public class ProjectMember
     public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
 }
 
+public class Team
+{
+    public int Id { get; set; }
+    public int ProjectId { get; set; }
+    public Project Project { get; set; } = null!;
+    public string Name { get; set; } = "";
+    public int TeamLeadId { get; set; }
+    public User TeamLead { get; set; } = null!;
+    public ICollection<TeamMember> Members { get; set; } = new List<TeamMember>();
+    public ICollection<ProjectTask> Tasks { get; set; } = new List<ProjectTask>();
+    public ICollection<ProjectFile> Resources { get; set; } = new List<ProjectFile>();
+}
+
+public class TeamMember
+{
+    public int TeamId { get; set; }
+    public Team Team { get; set; } = null!;
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+    public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class ProjectTask
 {
     public int Id { get; set; }
     public int ProjectId { get; set; }
     public Project Project { get; set; } = null!;
     public string Title { get; set; } = "";
+    public string? Description { get; set; }
+    public int? TeamId { get; set; }
+    public Team? Team { get; set; }
     public int? AssignedToId { get; set; }
     public User? AssignedTo { get; set; }
+    public int? AssignedById { get; set; }
+    public User? AssignedBy { get; set; }
     public WorkStatus Status { get; set; } = WorkStatus.Todo;
+    public DateOnly? StartDate { get; set; }
     public DateTime? DueDate { get; set; }
     public TaskPriority Priority { get; set; } = TaskPriority.Normal;
     public int? ReviewedById { get; set; }
@@ -76,6 +105,8 @@ public class ProjectHistory
     public int Id { get; set; }
     public int ProjectId { get; set; }
     public Project Project { get; set; } = null!;
+    public int? TeamId { get; set; }
+    public Team? Team { get; set; }
     public string Action { get; set; } = "";
     public int PerformedById { get; set; }
     public User PerformedBy { get; set; } = null!;
@@ -87,6 +118,10 @@ public class ProjectFile
     public int Id { get; set; }
     public int ProjectId { get; set; }
     public Project Project { get; set; } = null!;
+    public int? TeamId { get; set; }
+    public Team? Team { get; set; }
+    public int? TaskId { get; set; }
+    public ProjectTask? Task { get; set; }
     public string FileName { get; set; } = "";
     public string StoredName { get; set; } = "";
     public string ContentType { get; set; } = "";

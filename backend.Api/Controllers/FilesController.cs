@@ -14,18 +14,46 @@ public class FilesController(AppDbContext db, IWebHostEnvironment env) : Control
     private string Folder => Path.Combine(env.ContentRootPath, "Uploads");
 
     [HttpGet]
-    public async Task<IActionResult> List(int projectId)
+    public async Task<IActionResult> List(int projectId, [FromQuery] int? taskId)
     {
         if (!await db.Projects.VisibleTo(User).AnyAsync(p => p.Id == projectId)) return NotFound();
-        return Ok(await db.Files.Where(f => f.ProjectId == projectId).OrderByDescending(f => f.UploadedAt)
-            .Select(f => new FileDto(f.Id, f.FileName, f.Size, f.UploadedBy.FullName, f.UploadedAt)).ToListAsync());
+        var files = db.Files.VisibleTo(User).Where(file => file.ProjectId == projectId);
+        if (taskId.HasValue)
+            files = files.Where(file => file.TaskId == taskId.Value);
+
+        return Ok(await files.OrderByDescending(file => file.UploadedAt)
+            .Select(file => new FileDto(file.Id, file.FileName, file.Size,
+                file.UploadedBy.FullName, file.UploadedAt, file.TaskId)).ToListAsync());
     }
 
-    [HttpPost, Authorize(Roles = "Admin,Manager"), RequestSizeLimit(25_000_000)]
-    public async Task<IActionResult> Upload(int projectId, IFormFile file)
+    [HttpPost, Authorize(Roles = "Admin,Manager,TeamLead,Employee"), RequestSizeLimit(25_000_000)]
+    public async Task<IActionResult> Upload(int projectId, IFormFile file, [FromForm] int? taskId)
     {
-        if (!await db.Projects.VisibleTo(User).AnyAsync(p => p.Id == projectId)) return NotFound();
+        var isAdmin = User.IsInRole(nameof(UserRole.Admin));
+        if (!await db.Projects.VisibleTo(User).AnyAsync(p => p.Id == projectId &&
+                (isAdmin || p.Status == ProjectStatus.Active)))
+            return NotFound();
+        if (file is null) return BadRequest("Select a file");
         if (file.Length == 0) return BadRequest("Empty file");
+        if (file.Length > 20_000_000) return BadRequest("File must be 20 MB or smaller");
+
+        int? teamId = null;
+        if (taskId.HasValue)
+        {
+            var task = await db.ProjectTasks.Include(item => item.Team)
+                .FirstOrDefaultAsync(item => item.Id == taskId.Value && item.ProjectId == projectId);
+            if (task is null) return NotFound("Task not found in this project");
+            if (User.IsInRole(nameof(UserRole.Employee)) && task.AssignedToId != User.UserId())
+                return Forbid();
+            if (User.IsInRole(nameof(UserRole.TeamLead)) &&
+                task.Team?.TeamLeadId != User.UserId())
+                return Forbid();
+            teamId = task.TeamId;
+        }
+        else if (User.IsInRole(nameof(UserRole.Employee)) || User.IsInRole(nameof(UserRole.TeamLead)))
+        {
+            return BadRequest("Select a task to attach this deliverable");
+        }
 
         Directory.CreateDirectory(Folder);
         var stored = $"{Guid.NewGuid()}{Path.GetExtension(file.FileName)}";
@@ -35,6 +63,7 @@ public class FilesController(AppDbContext db, IWebHostEnvironment env) : Control
         db.Files.Add(new ProjectFile
         {
             ProjectId = projectId,
+            TaskId = taskId,
             FileName = Path.GetFileName(file.FileName),
             StoredName = stored,
             ContentType = file.ContentType,
@@ -44,6 +73,7 @@ public class FilesController(AppDbContext db, IWebHostEnvironment env) : Control
         db.History.Add(new ProjectHistory
         {
             ProjectId = projectId,
+            TeamId = teamId,
             PerformedById = User.UserId(),
             Action = $"File '{file.FileName}' uploaded"
         });
@@ -55,7 +85,7 @@ public class FilesController(AppDbContext db, IWebHostEnvironment env) : Control
     public async Task<IActionResult> Download(int projectId, int fileId)
     {
         if (!await db.Projects.VisibleTo(User).AnyAsync(p => p.Id == projectId)) return NotFound();
-        var f = await db.Files.FirstOrDefaultAsync(x => x.Id == fileId && x.ProjectId == projectId);
+        var f = await db.Files.VisibleTo(User).FirstOrDefaultAsync(x => x.Id == fileId && x.ProjectId == projectId);
         if (f is null) return NotFound();
         var path = Path.Combine(Folder, f.StoredName);
         return System.IO.File.Exists(path) ? PhysicalFile(path, f.ContentType, f.FileName) : NotFound();

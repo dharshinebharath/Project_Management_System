@@ -26,7 +26,8 @@ public class RequestsController(AppDbContext db) : ControllerBase
     public async Task<IActionResult> Create(RequestCreateDto dto)
     {
         var me = User.UserId();
-        if (!await db.Projects.AnyAsync(p => p.Id == dto.ProjectId && p.ManagerId == me))
+        if (!await db.Projects.AnyAsync(p => p.Id == dto.ProjectId && p.ManagerId == me &&
+                p.Status == ProjectStatus.Active))
             return Forbid();
         if (!await db.Users.AnyAsync(u => u.Id == dto.EmployeeId && u.Role == UserRole.Employee && u.IsActive))
             return BadRequest("Invalid employee");
@@ -50,7 +51,9 @@ public class RequestsController(AppDbContext db) : ControllerBase
     [HttpPut("{id}/review"), Authorize(Roles = "Admin")]
     public async Task<IActionResult> Review(int id, RequestReviewDto dto)
     {
-        var r = await db.Requests.Include(x => x.Employee).FirstOrDefaultAsync(x => x.Id == id);
+        await using var transaction = await db.BeginUpdateAsync();
+        var r = await db.Requests.Include(x => x.Employee).Include(x => x.Project)
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (r is null) return NotFound();
         if (r.Status != RequestStatus.Pending) return BadRequest("Already reviewed");
 
@@ -59,6 +62,14 @@ public class RequestsController(AppDbContext db) : ControllerBase
 
         if (dto.Approve)
         {
+            if (r.Project.Status != ProjectStatus.Active || !r.Employee.IsActive ||
+                r.Employee.Role != UserRole.Employee)
+                return Conflict("Approval requires an active project and employee");
+            if (await db.EmployeesHaveOtherActiveProject(r.ProjectId, [r.EmployeeId]))
+                return Conflict("This employee already belongs to another active project");
+            if (await db.ProjectMembers.AnyAsync(member => member.ProjectId == r.ProjectId &&
+                    member.UserId == r.EmployeeId))
+                return Conflict("Employee already in this project");
             db.ProjectMembers.Add(new ProjectMember { ProjectId = r.ProjectId, UserId = r.EmployeeId });
             db.History.Add(new ProjectHistory
             {
@@ -68,6 +79,7 @@ public class RequestsController(AppDbContext db) : ControllerBase
             });
         }
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return NoContent();
     }
 }
